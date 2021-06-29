@@ -132,6 +132,9 @@ double finalExpectElapsedTime;
 double ackExpectStartTime;
 double ackExpectElapsedTime;
 
+int pollExpectTuneSlot = 0;
+int finalExpectTimeout = 0;
+
 boolean skip_receive = 1;
 
 int currentDeviceIndex = 0;
@@ -415,7 +418,9 @@ void loop() {
 
   switch(current_state) {
     case STATE_IDLE: {
-        current_state = STATE_POLL;
+        current_state = STATE_POLL_EXPECT;
+        pollExpectRemainTime = (TRX_NUM - 1) * RANGING_TIMER;
+        pollExpectStartTime = get_time_us();
         skip_receive = 1;
         break;
     }
@@ -475,9 +480,11 @@ void loop() {
             respRxIds[respCount] = currentDeviceIndex;
             respCount++;
 #if(DEBUG_FLAG)
-            Serial.print("receive a response: ");
-            Serial.println(thisSeq);
-            Serial.print("rx Ts: ");
+            Serial.print("receive a response, seq = ");
+            Serial.print(thisSeq);
+            Serial.print(", src = ");
+            Serial.print(rx_packet[SRC_IDX]);
+            Serial.print(" rx Ts: ");
             print_uint64(respRxTs[currentDeviceIndex]);
             Serial.println("");
 #endif
@@ -485,6 +492,13 @@ void loop() {
               current_state = STATE_FINAL_SEND;
               skip_receive = 1;
             }
+          }else if(rx_packet[0] == POLL_MSG_TYPE){
+#if(DEBUG_FLAG)
+
+            Serial.print("Receive a poll while expecting a response, seq = ");
+            Serial.println(thisSeq);
+#endif
+            
           }
         }
         if(current_state == STATE_RESP_EXPECT){
@@ -534,18 +548,13 @@ void loop() {
       sendComplete = false;
 
       current_state = STATE_POLL_EXPECT;
-
       rxTimeoutUs = TYPICAL_TIMEOUT;
-      pollExpectStartTime = get_time_us();
-
-      if(respCount == 0){
-        pollExpectRemainTime = MAXTIME_POLL_EXPECT + RANDOM_SLOT_LEN * random(RANDOM_MIN_SLOT, RANDOM_MAX_SLOT);
+      if(respCount > 0){
+        pollExpectRemainTime = (TRX_NUM - 1) * RANGING_TIMER;
       }else{
-        pollExpectRemainTime = MAXTIME_POLL_EXPECT;
+        pollExpectRemainTime = (TRX_NUM - 1 + myid) * RANGING_TIMER;
       }
-      
-
-      
+      pollExpectStartTime = get_time_us();
       break;
     }
 
@@ -562,7 +571,7 @@ void loop() {
       }else{
         if (received) {
           received = false;
-          show_packet(rx_packet, DW1000.getDataLength());
+          //show_packet(rx_packet, DW1000.getDataLength());
           if (rx_packet[0] == POLL_MSG_TYPE && (rx_packet[DST_IDX] == myid || rx_packet[DST_IDX] == BROADCAST_ID)) {
             //Serial.println("Recieved poll!");
             currentInitiator = rx_packet[SRC_IDX];
@@ -596,6 +605,8 @@ void loop() {
 #if(DEBUG_FLAG)
             Serial.print("receive a poll, seq = ");
             Serial.print(currentSeq);
+            Serial.print(", src = ");
+            Serial.print(rx_packet[SRC_IDX]);
             Serial.print(", send delay: ");
             Serial.print(sendDelay);
             Serial.print(", poll tx Ts: ");
@@ -611,13 +622,14 @@ void loop() {
             thisRange.RespTxTime = txTS;
             
             //Serial.println("Response sent");
-            rxTimeoutUs = MAXTIME_FINAL_EXPECT;
+            finalExpectTimeout =  MAXTIME_FINAL_EXPECT - sendDelay;
+            rxTimeoutUs = finalExpectTimeout;
             finalExpectStartTime = get_time_us();
             current_state = STATE_FINAL_EXPECT;
             
-            int idle_delay = (MAXTIME_RESP_EXPECT - sendDelay) / 1e3 - 2;
-            idle_delay = (idle_delay > 0) ? idle_delay : 1;
-            delay(idle_delay);
+            // int idle_delay = (MAXTIME_RESP_EXPECT - sendDelay) / 1e3 - 2;
+            // idle_delay = (idle_delay > 0) ? idle_delay : 1;
+            // delay(idle_delay);
           }
         }
         if(current_state == STATE_POLL_EXPECT){// No need to reduce remain time here
@@ -642,9 +654,9 @@ void loop() {
     case STATE_FINAL_EXPECT: {
       currentTime = get_time_us();
       finalExpectElapsedTime = get_elapsed_time_us(finalExpectStartTime, currentTime);
-      if(finalExpectElapsedTime > MAXTIME_FINAL_EXPECT){
+      if(finalExpectElapsedTime > finalExpectTimeout){
          current_state = STATE_POLL_EXPECT;
-         pollExpectStartTime = get_time_us();
+         pollExpectElapsedTime = get_elapsed_time_us(pollExpectStartTime, get_time_us());
          pollExpectRemainTime -= pollExpectElapsedTime;
          rxTimeoutUs = getNonnegRxTimeout(pollExpectRemainTime);
       }else{
@@ -673,7 +685,9 @@ void loop() {
 #if(DEBUG_FLAG)
             Serial.print("receive a final, seq = ");
             Serial.print(thisSeq);
-            Serial.print("poll tx Ts: ");
+            Serial.print(", src = ");
+            Serial.print(rx_packet[SRC_IDX]);
+            Serial.print(" poll tx Ts: ");
             print_uint64(thisRange.PollTxTime.getTimestamp());
             Serial.print(" poll rx Ts: ");
             print_uint64(thisRange.PollRxTime.getTimestamp());
@@ -703,10 +717,28 @@ void loop() {
               Serial.print(",");
             }
             Serial.println("");
-            current_state = STATE_POLL_EXPECT;
-            pollExpectStartTime = get_time_us();
-            pollExpectRemainTime -= pollExpectElapsedTime;
-            rxTimeoutUs = getNonnegRxTimeout(pollExpectRemainTime);
+            //current_state = STATE_POLL_EXPECT;
+            
+            int myorder = (myid - rx_packet[SRC_IDX] + TRX_NUM) % TRX_NUM - 1;
+            if(myorder == 0){
+              current_state = STATE_POLL;
+              delay(5);
+              skip_receive = 1;
+#if(DEBUG_FLAG)
+              Serial.println("I will poll next.");
+#endif
+            }else{
+              pollExpectRemainTime = myorder * RANGING_TIMER;
+              current_state = STATE_POLL_EXPECT;
+              rxTimeoutUs = getNonnegRxTimeout(pollExpectRemainTime);
+              pollExpectStartTime = get_time_us();
+#if(DEBUG_FLAG)
+            Serial.print("To poll, waiting time = ");
+            Serial.println(pollExpectRemainTime);
+#endif
+            }
+            //pollExpectRemainTime -= pollExpectElapsedTime;
+            
             //Send ACK
             /*
             tx_ack_msg[0] = ACK_MSG_TYPE;
@@ -738,7 +770,7 @@ void loop() {
         }
         if(current_state == STATE_FINAL_EXPECT){
           // currentTime = get_time_us();
-          double tmpRxTimeout = MAXTIME_FINAL_EXPECT - finalExpectElapsedTime;
+          double tmpRxTimeout = finalExpectTimeout - finalExpectElapsedTime;
           rxTimeoutUs = getNonnegRxTimeout(tmpRxTimeout);
         }
       }
