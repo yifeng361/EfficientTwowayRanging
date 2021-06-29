@@ -3,7 +3,7 @@ This code implements efficient multi-node two way ranging of DW1000 in Arduino. 
 
 This code assumes:
 - Each nodes knows the maximum number of nodes in the network.
-- Each node has a ID.
+- Each node has an ID.
 
  
 - [x] 3-node network is tested. 6/29/2021
