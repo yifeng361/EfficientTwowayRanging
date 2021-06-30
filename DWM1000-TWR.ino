@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 by Ashutosh Dhekne <dhekne@gatech.edu>
+ * Copyright (c) 2021 by Yifeng Cao <ycao361@gatech.edu>
  * Peer-peer protocol
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * @file PeerProtocol_test01.ino
+ * @file DWM1000-TWR.ino
  * 
  *  
  */
@@ -249,11 +249,13 @@ Serial.print("Should see this...");
   }
 
   if (SDEnabled==1) {
-    sprintf(filename, "dist%03d.txt", filenum);
+    sprintf(filename, "node%d_%d-%d-%d-%d-%d-%d.txt", myid, now.year(), now.month(), now.day(),
+            now.hour(), now.minute(), now.second());
     if (!store_distance.open(filename, O_WRITE|O_CREAT)) {
       Serial.println("Could not create file");
       delay(10000);
     }
+    store_distance.println("Hi, SD card is tested successfully");
   }
   randomSeed(analogRead(0));
   Serial.println(F("Peer-peer ranging protocol"));
@@ -717,6 +719,18 @@ void loop() {
               Serial.print(",");
             }
             Serial.println("");
+
+            store_distance.print(myid);
+            store_distance.print(", ");
+            store_distance.print(rx_packet[SRC_IDX]);
+            store_distance.print(", ");
+            store_distance.print(thisSeq);
+            store_distance.print(", ");
+            store_distance.print(dist);
+            store_distance.print(", ");
+            store_distance.println(millis());
+            store_distance.flush();
+
             //current_state = STATE_POLL_EXPECT;
             
             int myorder = (myid - rx_packet[SRC_IDX] + TRX_NUM) % TRX_NUM - 1;

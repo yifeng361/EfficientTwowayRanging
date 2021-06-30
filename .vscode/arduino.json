@@ -2,6 +2,6 @@
     "configuration": "usbstack=arduino,debug=off",
     "board": "adafruit:samd:adafruit_feather_m0",
     "programmer": "adafruit:adafruit_jlink",
-    "port": "COM14",
+    "port": "COM10",
     "sketch": "DWM1000-TWR.ino"
 }
