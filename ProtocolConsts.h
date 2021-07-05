@@ -89,4 +89,4 @@ typedef enum send_modes{SEND_IMMEDIATE, SEND_DELAY_FIXED, SEND_DELAY_BOARDID, SE
 
 
 
-const int myid = 1;
+const int myid = 5;

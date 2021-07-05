@@ -713,12 +713,8 @@ void loop() {
             Serial.print(thisSeq);
             Serial.print(", ");
             Serial.print(dist);
-            Serial.print("   || distMat: ");
-            for(int i = 1; i <= TRX_NUM; i++){
-              Serial.print(distMat[myid][i]);
-              Serial.print(",");
-            }
-            Serial.println("");
+            Serial.print(",");
+            Serial.println(millis());
 
             store_distance.print(myid);
             store_distance.print(", ");
